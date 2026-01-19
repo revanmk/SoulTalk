@@ -1,0 +1,9 @@
+{
+  "name": "Copy of SoulTalk - AI Companion",
+  "description": "An empathetic AI counseling assistant that provides emotional support and facial emotion analysis.",
+  "requestFramePermissions": [
+    "camera",
+    "microphone",
+    "geolocation"
+  ]
+}
