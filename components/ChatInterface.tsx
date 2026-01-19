@@ -1,10 +1,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Message, User, Emotion, Exercise } from '../types';
+import { Message, User, Emotion, Exercise, JournalEntry } from '../types';
 import { processChatMessage } from '../services/unifiedAIService';
 import { dbService } from '../services/databaseService';
 import WebcamCapture from './WebcamCapture';
 import Journal from './Journal';
+import UserProgress from './UserProgress';
 import ExercisePlayer from './ExercisePlayer';
 import { useAuth } from '../context/AuthContext';
 import { useContent } from '../context/ContentContext';
@@ -27,7 +28,7 @@ const QUICK_ACTIONS = [
 const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onLogout }) => {
   const { updateProfile } = useAuth();
   const { exercises } = useContent();
-  const [activeTab, setActiveTab] = useState<'chat' | 'journal' | 'exercises'>('chat');
+  const [activeTab, setActiveTab] = useState<'chat' | 'journal' | 'exercises' | 'progress'>('chat');
   const [selectedExercise, setSelectedExercise] = useState<Exercise | null>(null);
   
   // Chat State
@@ -36,6 +37,9 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onLogout }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>(Emotion.NEUTRAL);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Journal State for Progress Tab
+  const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
 
   // Smart Suggestions
   const [showExerciseSuggestion, setShowExerciseSuggestion] = useState(false);
@@ -53,18 +57,22 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onLogout }) => {
   const [editEmergencyName, setEditEmergencyName] = useState(user.emergencyContactName || '');
   const [editEmergencyNumber, setEditEmergencyNumber] = useState(user.emergencyContactNumber || '');
 
-  // Load chat history from DB
+  // Load chat history & journal for dashboard
   useEffect(() => {
-    const loadChat = async () => {
+    const loadData = async () => {
         const history = await dbService.getChatHistory(user.id);
         if (history.length > 0) {
             setMessages(history.map(msg => ({...msg, timestamp: new Date(msg.timestamp)})));
         } else {
             initializeGreeting();
         }
+
+        // Pre-fetch journal for progress tab
+        const jEntries = await dbService.getJournalEntries(user.id);
+        setJournalEntries(jEntries);
     };
-    loadChat();
-  }, [user.id]);
+    loadData();
+  }, [user.id, activeTab]); // Reload when tab changes to refresh progress
 
   const initializeGreeting = async () => {
     const greeting: Message = {
@@ -120,11 +128,25 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onLogout }) => {
       if (!crisisAlertSent) {
         const locationLink = await getUserLocation();
         setCrisisLocationLink(locationLink);
-        const msgBody = `CRISIS ALERT: ${user.name} may be in danger. Message: "${triggerText}". ${locationLink ? `Location: ${locationLink}` : ''}`;
-        console.group("🚨 EMERGENCY NOTIFICATION SYSTEM");
-        console.log(`To: ${user.emergencyContactName} (${user.emergencyContactNumber})`);
-        console.log(`Body: ${msgBody}`);
-        console.groupEnd();
+        
+        // Use Backend to Dispatch Alert
+        try {
+          await fetch('http://localhost:8000/api/alert', {
+             method: 'POST',
+             headers: { 'Content-Type': 'application/json' },
+             body: JSON.stringify({
+                user_name: user.name,
+                contact_name: user.emergencyContactName || 'Emergency Contact',
+                contact_number: user.emergencyContactNumber || '',
+                message: triggerText,
+                location: locationLink
+             })
+          });
+          console.log("🚨 Alert dispatched to backend.");
+        } catch (e) {
+          console.error("Failed to dispatch backend alert", e);
+        }
+
         setCrisisAlertSent(true);
       }
   };
@@ -224,33 +246,20 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onLogout }) => {
         
         {/* Navigation Tabs (Desktop) */}
         <div className="hidden md:flex bg-slate-100 p-1 rounded-lg">
-          <button
-            onClick={() => setActiveTab('chat')}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-              activeTab === 'chat' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            Chat
-          </button>
-          <button
-            onClick={() => setActiveTab('journal')}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-              activeTab === 'journal' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            Journal
-          </button>
-          <button
-            onClick={() => {
-              setActiveTab('exercises');
-              setSelectedExercise(null);
-            }}
-            className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
-              activeTab === 'exercises' ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
-            }`}
-          >
-            Exercises
-          </button>
+          {['Chat', 'Journal', 'Progress', 'Exercises'].map((tab) => (
+             <button
+               key={tab}
+               onClick={() => {
+                 setActiveTab(tab.toLowerCase() as any);
+                 if(tab === 'Exercises') setSelectedExercise(null);
+               }}
+               className={`px-4 py-1.5 text-sm font-medium rounded-md transition-all ${
+                 activeTab === tab.toLowerCase() ? 'bg-white text-indigo-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'
+               }`}
+             >
+               {tab}
+             </button>
+          ))}
         </div>
         
         <div className="flex items-center gap-4">
@@ -278,34 +287,21 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onLogout }) => {
         <div className="flex-1 flex flex-col relative w-full h-full">
           
           {/* Tabs for Mobile */}
-          <div className="md:hidden flex border-b border-slate-200 bg-white">
-            <button
-              onClick={() => setActiveTab('chat')}
-              className={`flex-1 py-3 text-sm font-medium text-center ${
-                activeTab === 'chat' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500'
-              }`}
-            >
-              Chat
-            </button>
-            <button
-              onClick={() => setActiveTab('journal')}
-              className={`flex-1 py-3 text-sm font-medium text-center ${
-                activeTab === 'journal' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500'
-              }`}
-            >
-              Journal
-            </button>
-            <button
-              onClick={() => {
-                setActiveTab('exercises');
-                setSelectedExercise(null);
-              }}
-              className={`flex-1 py-3 text-sm font-medium text-center ${
-                activeTab === 'exercises' ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500'
-              }`}
-            >
-              Exercises
-            </button>
+          <div className="md:hidden flex border-b border-slate-200 bg-white overflow-x-auto">
+            {['Chat', 'Journal', 'Progress', 'Exercises'].map((tab) => (
+               <button
+                 key={tab}
+                 onClick={() => {
+                   setActiveTab(tab.toLowerCase() as any);
+                   if(tab === 'Exercises') setSelectedExercise(null);
+                 }}
+                 className={`flex-1 py-3 text-sm font-medium text-center whitespace-nowrap px-4 ${
+                   activeTab === tab.toLowerCase() ? 'text-indigo-600 border-b-2 border-indigo-600' : 'text-slate-500'
+                 }`}
+               >
+                 {tab}
+               </button>
+            ))}
           </div>
 
           {activeTab === 'chat' && (
@@ -439,6 +435,12 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onLogout }) => {
             <div className="flex-1 overflow-hidden">
                <Journal user={user} />
             </div>
+          )}
+
+          {activeTab === 'progress' && (
+              <div className="flex-1 overflow-y-auto">
+                  <UserProgress entries={journalEntries} />
+              </div>
           )}
 
           {activeTab === 'exercises' && (
@@ -603,7 +605,7 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onLogout }) => {
               
               {crisisAlertSent && (
                  <p className="text-[10px] text-slate-400 mt-4">
-                    Automated safety alert sent to emergency contact.
+                    Automated safety alert dispatched to emergency contact.
                  </p>
               )}
            </div>

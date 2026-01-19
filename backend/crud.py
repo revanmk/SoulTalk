@@ -1,20 +1,23 @@
 
 from sqlalchemy.orm import Session
-from backend import models, schemas
-import uuid
+import models
+import schemas
+from security import get_password_hash
 
 # --- Users ---
 def get_user_by_email(db: Session, email: str):
+    print(f"Checking for user with email: {email}")
     return db.query(models.User).filter(models.User.email == email).first()
 
 def get_users(db: Session):
     return db.query(models.User).all()
 
 def create_user(db: Session, user: schemas.UserCreate):
-    # In production, hash the password here
+    print(f"Attempting to create user: {user.email}")
+    hashed_password = get_password_hash(user.password)
     db_user = models.User(
         email=user.email,
-        password_hash=user.password, 
+        password_hash=hashed_password, 
         name=user.name,
         country=user.country,
         emergency_contact_name=user.emergency_contact_name,
@@ -23,9 +26,15 @@ def create_user(db: Session, user: schemas.UserCreate):
         is_admin=user.is_admin
     )
     db.add(db_user)
-    db.commit()
-    db.refresh(db_user)
-    return db_user
+    try:
+        db.commit()
+        db.refresh(db_user)
+        print(f"SUCCESS: User created with ID: {db_user.id}")
+        return db_user
+    except Exception as e:
+        print(f"ERROR: Failed to commit user to DB. Reason: {e}")
+        db.rollback()
+        raise e
 
 def update_user(db: Session, user_id: str, updates: dict):
     db.query(models.User).filter(models.User.id == user_id).update(updates)

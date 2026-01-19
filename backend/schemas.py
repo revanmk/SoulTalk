@@ -1,6 +1,6 @@
 
 from pydantic import BaseModel
-from typing import Optional, List, Any
+from typing import Optional, List
 from datetime import datetime
 
 # --- User Schemas ---
@@ -30,8 +30,8 @@ class UserLogin(BaseModel):
 # --- Chat Schemas ---
 class MessageCreate(BaseModel):
     role: str
-    text: str # mapped to content in DB
-    sentiment: Optional[str] = None # mapped to detected_emotion in DB
+    text: str 
+    sentiment: Optional[str] = None 
     sentimentScore: Optional[float] = None
     emotionContext: Optional[str] = None 
 
@@ -57,7 +57,7 @@ class JournalEntryResponse(BaseModel):
     content: str
     mood: str
     tags: Optional[List[str]] = []
-    timestamp: datetime # mapped from created_at
+    timestamp: datetime 
     
     class Config:
         from_attributes = True
@@ -68,7 +68,7 @@ class ExerciseBase(BaseModel):
     description: str
     duration: str
     category: str
-    visualizationType: str # mapped to visualization_type
+    visualizationType: str 
     steps: List[str]
 
 class ExerciseResponse(ExerciseBase):

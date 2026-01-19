@@ -1,16 +1,28 @@
 
-from fastapi import FastAPI, Depends, HTTPException, status
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from typing import List
-from backend import models, schemas, crud, database
+from sqlalchemy import text
+from typing import List, Optional
+from pydantic import BaseModel
+import models
+import schemas
+import crud
+import database
+import security
+import time
 
 # Create tables if they don't exist
-models.Base.metadata.create_all(bind=database.engine)
+try:
+    print("Creating/Verifying tables...")
+    models.Base.metadata.create_all(bind=database.engine)
+    print("Tables verified.")
+except Exception as e:
+    print(f"CRITICAL ERROR: Could not connect to Database. Error: {e}")
 
 app = FastAPI()
 
-# Enable CORS for React Frontend - Allow all for dev simplicity
+# Enable CORS for React Frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"], 
@@ -27,24 +39,60 @@ def get_db():
     finally:
         db.close()
 
+@app.on_event("startup")
+def startup_db_check():
+    db = database.SessionLocal()
+    try:
+        user_count = db.query(models.User).count()
+        print(f"--- STARTUP DIAGNOSTICS ---")
+        print(f"Database connected successfully.")
+        print(f"Existing Users in DB: {user_count}")
+        if user_count > 0:
+            first_user = db.query(models.User).first()
+            print(f"Sample User: {first_user.email} (ID: {first_user.id})")
+        print(f"---------------------------")
+    except Exception as e:
+        print(f"Startup DB Check Failed: {e}")
+    finally:
+        db.close()
+
+@app.get("/")
+def health_check(db: Session = Depends(get_db)):
+    try:
+        # Simple query to verify DB connection
+        db.execute(text("SELECT 1"))
+        return {"status": "online", "database": "connected"}
+    except Exception as e:
+        return {"status": "error", "database": str(e)}
+
 # --- Auth Controller ---
 
 @app.post("/api/login", response_model=schemas.UserResponse)
 def login(creds: schemas.UserLogin, db: Session = Depends(get_db)):
+    print(f"Login attempt for: {creds.email}")
     user = crud.get_user_by_email(db, creds.email)
     if not user:
+        print("Login failed: User not found")
         raise HTTPException(status_code=400, detail="User not found")
-    # Simple password check for demo
-    if user.password_hash != creds.password:
+    
+    if not security.verify_password(creds.password, user.password_hash):
+        print("Login failed: Incorrect password")
         raise HTTPException(status_code=400, detail="Incorrect password")
+    
+    print("Login successful")
     return user
 
 @app.post("/api/signup", response_model=schemas.UserResponse)
 def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
+    print(f"Signup request for: {user.email}")
     db_user = crud.get_user_by_email(db, user.email)
     if db_user:
+        print("Signup failed: Email exists")
         raise HTTPException(status_code=400, detail="Email already registered")
-    return crud.create_user(db, user)
+    
+    new_user = crud.create_user(db, user)
+    print(f"DEBUG: User created successfully in main.py handler. ID: {new_user.id}")
+    return new_user
 
 @app.put("/api/users/{user_id}")
 def update_user(user_id: str, updates: dict, db: Session = Depends(get_db)):
@@ -53,14 +101,38 @@ def update_user(user_id: str, updates: dict, db: Session = Depends(get_db)):
 
 @app.get("/api/users", response_model=List[schemas.UserResponse])
 def get_all_users(db: Session = Depends(get_db)):
-    return crud.get_users(db)
+    users = crud.get_users(db)
+    print(f"Returning {len(users)} users")
+    return users
+
+# --- Crisis Alerting ---
+
+class CrisisAlert(BaseModel):
+    user_name: str
+    contact_name: str
+    contact_number: str
+    message: str
+    location: Optional[str] = None
+
+def send_email_notification(alert: CrisisAlert):
+    print(f"--- [MOCK EMAIL SENT] ---")
+    print(f"To: {alert.contact_name} ({alert.contact_number})")
+    print(f"Subject: URGENT: Crisis Alert for {alert.user_name}")
+    print(f"Body: {alert.message}")
+    if alert.location:
+        print(f"Location: {alert.location}")
+    print("---------------------------")
+
+@app.post("/api/alert")
+def trigger_alert(alert: CrisisAlert, background_tasks: BackgroundTasks):
+    background_tasks.add_task(send_email_notification, alert)
+    return {"status": "alert_queued"}
 
 # --- Chat Controller ---
 
 @app.get("/api/chat/{user_id}", response_model=List[schemas.MessageResponse])
 def get_chat_history(user_id: str, db: Session = Depends(get_db)):
     history = crud.get_chat_history(db, user_id)
-    # Map DB model to Pydantic Response
     return [
         schemas.MessageResponse(
             id=msg.id,
