@@ -24,12 +24,26 @@ const ExercisePlayer: React.FC<ExercisePlayerProps> = ({ exercise, onClose }) =>
   const [breathPhase, setBreathPhase] = useState<'inhale' | 'hold-in' | 'exhale' | 'hold-out'>('inhale');
   const [breathInstruction, setBreathInstruction] = useState('Inhale');
 
+  // Helper to safely create audio
+  const createAudio = (url: string) => {
+      const audio = new Audio(url);
+      audio.loop = true;
+      audio.volume = volume;
+      audio.onerror = (e) => {
+          console.warn("Audio failed to load:", url, e);
+          // Don't crash, just log. 
+      };
+      return audio;
+  };
+
   // Initialize Audio
   useEffect(() => {
     if (audioTrack) {
-        audioRef.current = new Audio(audioTrack.url);
-        audioRef.current.loop = true;
-        audioRef.current.volume = volume;
+        try {
+            audioRef.current = createAudio(audioTrack.url);
+        } catch (e) {
+            console.error("Failed to initialize audio:", e);
+        }
     }
     
     // Cleanup
@@ -45,19 +59,22 @@ const ExercisePlayer: React.FC<ExercisePlayerProps> = ({ exercise, onClose }) =>
   // Handle Track Change
   useEffect(() => {
     if (audioTrack) {
-        if (!audioRef.current) {
-            audioRef.current = new Audio(audioTrack.url);
-            audioRef.current.loop = true;
-        }
-
-        // Check if URL actually changed to prevent reload on initial render if logic overlaps
-        if (audioRef.current.src !== audioTrack.url) {
-            const wasPlaying = !audioRef.current.paused || isPlaying; 
-            audioRef.current.src = audioTrack.url;
-            audioRef.current.volume = volume;
-            if (wasPlaying && isPlaying) {
-                audioRef.current.play().catch(e => console.warn("Audio play failed on track change:", e));
+        try {
+            if (!audioRef.current) {
+                audioRef.current = createAudio(audioTrack.url);
             }
+
+            // Check if URL actually changed to prevent reload on initial render if logic overlaps
+            if (audioRef.current.src !== audioTrack.url) {
+                const wasPlaying = !audioRef.current.paused || isPlaying; 
+                audioRef.current.src = audioTrack.url;
+                audioRef.current.volume = volume;
+                if (wasPlaying && isPlaying) {
+                    audioRef.current.play().catch(e => console.warn("Audio play failed on track change:", e));
+                }
+            }
+        } catch(e) {
+            console.error("Error setting track:", e);
         }
     }
   }, [audioTrack, isPlaying, volume]); 
@@ -77,7 +94,8 @@ const ExercisePlayer: React.FC<ExercisePlayerProps> = ({ exercise, onClose }) =>
       const playPromise = audioRef.current.play();
       if (playPromise !== undefined) {
         playPromise.catch(error => {
-          console.error("Audio playback error:", error);
+          console.warn("Audio playback prevented/failed:", error);
+          // We don't stop the visual timer, just log warning
         });
       }
     } else {
@@ -152,6 +170,9 @@ const ExercisePlayer: React.FC<ExercisePlayerProps> = ({ exercise, onClose }) =>
   const togglePlay = () => setIsPlaying(!isPlaying);
 
   const handleNextStep = () => {
+    // Guard clause for missing steps
+    if (!exercise.steps) return;
+
     if (currentStepIndex < exercise.steps.length - 1) {
       setCurrentStepIndex(prev => prev + 1);
     } else {
@@ -170,6 +191,10 @@ const ExercisePlayer: React.FC<ExercisePlayerProps> = ({ exercise, onClose }) =>
     const s = seconds % 60;
     return `${m}:${s < 10 ? '0' : ''}${s}`;
   };
+
+  // Safe access to steps with fallback
+  const steps = exercise.steps || [];
+  const currentStepText = steps.length > 0 ? steps[currentStepIndex] : "No instructions available";
 
   return (
     <div className="flex flex-col h-full bg-slate-900 text-white overflow-hidden relative animate-pop-in">
@@ -238,10 +263,10 @@ const ExercisePlayer: React.FC<ExercisePlayerProps> = ({ exercise, onClose }) =>
         {exercise.visualizationType === 'COUNTDOWN' && (
           <div className="w-full max-w-md text-center space-y-8">
              <div className="text-6xl font-bold text-indigo-400">
-                {exercise.steps.length - currentStepIndex}
+                {steps.length - currentStepIndex}
              </div>
              <p className="text-2xl font-light leading-relaxed">
-               {exercise.steps[currentStepIndex]}
+               {currentStepText}
              </p>
              <div className="flex justify-center gap-4 pt-4">
                 <button 
@@ -253,9 +278,10 @@ const ExercisePlayer: React.FC<ExercisePlayerProps> = ({ exercise, onClose }) =>
                 </button>
                 <button 
                   onClick={handleNextStep}
+                  disabled={steps.length === 0}
                   className="px-6 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 transition-colors font-semibold"
                 >
-                  {currentStepIndex === exercise.steps.length - 1 ? 'Finish' : 'Next Step'}
+                  {currentStepIndex === steps.length - 1 ? 'Finish' : 'Next Step'}
                 </button>
              </div>
           </div>
@@ -269,7 +295,7 @@ const ExercisePlayer: React.FC<ExercisePlayerProps> = ({ exercise, onClose }) =>
               </div>
               <div className="h-48 overflow-y-auto p-4 bg-white/5 rounded-xl border border-white/10 custom-scrollbar">
                 <ul className="space-y-4 text-left">
-                  {exercise.steps.map((step, idx) => (
+                  {steps.map((step, idx) => (
                     <li key={idx} className={`flex gap-3 text-lg ${idx === 0 ? 'text-white' : 'text-slate-400'}`}>
                        <span className="text-indigo-400 font-bold">{idx + 1}.</span>
                        <span>{step}</span>

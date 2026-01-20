@@ -45,10 +45,10 @@ export const CRISIS_KEYWORDS = [
 ];
 
 export const DEFAULT_SOUNDSCAPES: Soundscape[] = [
-  { id: 'rain', name: 'Light Rain', url: 'https://assets.mixkit.co/sfx/preview/mixkit-light-rain-loop-2393.mp3' },
-  { id: 'forest', name: 'Forest Birds', url: 'https://assets.mixkit.co/sfx/preview/mixkit-forest-birds-ambience-1210.mp3' },
-  { id: 'waves', name: 'Ocean Waves', url: 'https://assets.mixkit.co/sfx/preview/mixkit-sea-waves-loop-1196.mp3' },
-  { id: 'cafe', name: 'Cafe Ambience', url: 'https://assets.mixkit.co/sfx/preview/mixkit-restaurant-crowd-talking-ambience-443.mp3' },
+  { id: 'rain', name: 'Light Rain', url: 'https://actions.google.com/sounds/v1/weather/rain_heavy_loud.ogg' },
+  { id: 'forest', name: 'Forest Birds', url: 'https://actions.google.com/sounds/v1/ambiences/forest_morning.ogg' },
+  { id: 'waves', name: 'Ocean Waves', url: 'https://actions.google.com/sounds/v1/water/waves_crashing_on_rock_beach.ogg' },
+  { id: 'night', name: 'Night Crickets', url: 'https://actions.google.com/sounds/v1/ambiences/night_crickets_water_distant.ogg' },
 ];
 
 export const DEFAULT_EXERCISES: Exercise[] = [

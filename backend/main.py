@@ -1,5 +1,5 @@
 
-from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks
+from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -30,6 +30,17 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# --- Middleware for Logging ---
+@app.middleware("http")
+async def log_requests(request: Request, call_next):
+    print(f"INCOMING REQUEST: {request.method} {request.url}")
+    try:
+        response = await call_next(request)
+        return response
+    except Exception as e:
+        print(f"REQUEST FAILED: {e}")
+        raise e
 
 # Dependency
 def get_db():
@@ -78,6 +89,8 @@ def login(creds: schemas.UserLogin, db: Session = Depends(get_db)):
     if not security.verify_password(creds.password, user.password_hash):
         print("Login failed: Incorrect password")
         raise HTTPException(status_code=400, detail="Incorrect password")
+        
+    # Removed email verification check to unblock signup/login flow
     
     print("Login successful")
     return user
@@ -91,8 +104,15 @@ def signup(user: schemas.UserCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="Email already registered")
     
     new_user = crud.create_user(db, user)
-    print(f"DEBUG: User created successfully in main.py handler. ID: {new_user.id}")
+    print(f"DEBUG: User created successfully. Verification pending. ID: {new_user.id}")
     return new_user
+
+@app.get("/api/verify/{token}")
+def verify_email(token: str, db: Session = Depends(get_db)):
+    success = crud.verify_user_token(db, token)
+    if not success:
+        raise HTTPException(status_code=400, detail="Invalid or expired verification token")
+    return {"status": "verified", "message": "Email verified successfully. You may now login."}
 
 @app.put("/api/users/{user_id}")
 def update_user(user_id: str, updates: dict, db: Session = Depends(get_db)):

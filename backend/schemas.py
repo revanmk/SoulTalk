@@ -19,6 +19,8 @@ class UserCreate(UserBase):
 class UserResponse(UserBase):
     id: str
     created_at: datetime
+    is_verified: bool
+    verification_token: Optional[str] = None # Exposed for demo/testing convenience
     
     class Config:
         from_attributes = True

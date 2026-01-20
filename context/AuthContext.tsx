@@ -3,21 +3,26 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { AuthContextType, User, JournalEntry, Message } from '../types';
 import { dbService } from '../services/databaseService';
 
-const AuthContext = createContext<AuthContextType | undefined>(undefined);
+// Extended return type for signup to include token for demo
+interface SignupResult {
+    success: boolean;
+    token?: string;
+}
+
+interface ExtendedAuthContextType extends Omit<AuthContextType, 'signup'> {
+    signup: (email: string, password: string, name: string, country: string, emergencyContactName: string, emergencyContactNumber: string, profilePic?: string) => Promise<SignupResult>;
+}
+
+const AuthContext = createContext<ExtendedAuthContextType | undefined>(undefined);
 
 export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Session persistence is tricky without JWT/Cookies in this simple refactor.
-    // We will rely on localStorage for the ID, and re-fetch user details.
+    // Session persistence
     const storedUserId = localStorage.getItem('soultalk_session_uid');
     
-    // In a real JWT app, we would verify token. Here we just reload data if ID exists
-    // Note: With the new backend, we really should fetch "me" endpoint.
-    // For this migration, we will fetch all users and find the ID to restore session.
-    // (Optimization: Add a /me endpoint in backend later)
     if (storedUserId) {
        dbService.getAllUsers().then(users => {
           const found = users.find(u => u.id === storedUserId);
@@ -34,7 +39,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const login = async (email: string, password: string): Promise<boolean> => {
     setIsLoading(true);
     try {
-      // Backend Login
       const userRecord = await dbService.loginUser({email, password});
       if (userRecord) {
           setUser(userRecord);
@@ -43,7 +47,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           return true;
       }
     } catch (e) {
-      console.error(e);
+      setIsLoading(false);
+      throw e; // Bubble up error
     }
     
     setIsLoading(false);
@@ -58,7 +63,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     emergencyContactName: string,
     emergencyContactNumber: string,
     profilePic?: string
-  ): Promise<boolean> => {
+  ): Promise<SignupResult> => {
     setIsLoading(true);
     try {
       const newUser = await dbService.createUser({
@@ -71,16 +76,26 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         profilePic,
         isAdmin: false
       });
-
-      setUser(newUser);
-      localStorage.setItem('soultalk_session_uid', newUser.id);
+      
+      // Do NOT set user session immediately. Require verification.
       setIsLoading(false);
-      return true;
+      return { success: true, token: newUser.verificationToken };
     } catch (e) {
-      console.error(e);
       setIsLoading(false);
-      return false;
+      throw e; // Bubble up error
     }
+  };
+
+  const verifyEmail = async (token: string): Promise<boolean> => {
+      setIsLoading(true);
+      try {
+          const success = await dbService.verifyUser(token);
+          setIsLoading(false);
+          return success;
+      } catch (e) {
+          setIsLoading(false);
+          return false;
+      }
   };
 
   const createAdmin = async (email: string, password: string, name: string): Promise<boolean> => {
@@ -120,24 +135,14 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return users;
   };
 
-  const getUserData = (userId: string) => {
-    // This fetches data dynamically for the admin panel
-    const [data, setData] = useState<{ journal: JournalEntry[], chat: Message[] }>({ journal: [], chat: [] });
-    
-    useEffect(() => {
-        const fetchData = async () => {
-            const chat = await dbService.getChatHistory(userId);
-            const journal = await dbService.getJournalEntries(userId);
-            setData({ chat, journal });
-        };
-        fetchData();
-    }, [userId]);
-
-    return data;
+  const fetchUserData = async (userId: string) => {
+    const chat = await dbService.getChatHistory(userId);
+    const journal = await dbService.getJournalEntries(userId);
+    return { chat, journal };
   };
 
   return (
-    <AuthContext.Provider value={{ user, login, signup, createAdmin, logout, isLoading, getAllUsers, getUserData, updateProfile }}>
+    <AuthContext.Provider value={{ user, login, signup, createAdmin, logout, isLoading, getAllUsers, fetchUserData, updateProfile, verifyEmail }}>
       {children}
     </AuthContext.Provider>
   );

@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { COUNTRIES } from '../constants';
 
 const Login: React.FC = () => {
-  const { login, signup, isLoading } = useAuth();
+  const { login, signup, verifyEmail, isLoading } = useAuth();
   const [isLoginView, setIsLoginView] = useState(true);
   
   // Login Fields
@@ -17,7 +18,29 @@ const Login: React.FC = () => {
   const [emergencyNumber, setEmergencyNumber] = useState('');
   const [profilePic, setProfilePic] = useState<string | undefined>(undefined);
   
+  // State for UI feedback
   const [error, setError] = useState('');
+  // Verification states removed as we now auto-verify for smooth onboarding
+  const [verificationStatus, setVerificationStatus] = useState<'pending' | 'success' | 'failed' | null>(null);
+
+  // Check URL for verification token (legacy support if needed, or if user clicks old link)
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const token = params.get('verify');
+    if (token) {
+        // Clear params to look clean
+        window.history.replaceState({}, document.title, window.location.pathname);
+        
+        setVerificationStatus('pending');
+        verifyEmail(token).then(success => {
+            if (success) {
+                setVerificationStatus('success');
+            } else {
+                setVerificationStatus('failed');
+            }
+        });
+    }
+  }, []);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -50,17 +73,58 @@ const Login: React.FC = () => {
       }
     }
 
-    let success = false;
-    if (isLoginView) {
-      success = await login(email, password);
-    } else {
-      success = await signup(email, password, name, country, emergencyName, emergencyNumber, profilePic);
-    }
-
-    if (!success) {
-      setError(isLoginView ? 'Invalid email or password' : 'User already exists');
+    try {
+      if (isLoginView) {
+        await login(email, password);
+      } else {
+        await signup(email, password, name, country, emergencyName, emergencyNumber, profilePic);
+        // Auto-switch to login view with success message
+        setIsLoginView(true);
+        // We use the error state to show success message temporarily for simplicity
+        setError('Account created! Please log in.');
+        
+        // Reset form slightly
+        // Keep email/pass filled for convenience
+      }
+    } catch (err: any) {
+      // Display the actual error message (e.g., "Cannot connect to server")
+      setError(err.message || 'Authentication failed');
     }
   };
+
+  // Verification Processing View (Keep for legacy links)
+  if (verificationStatus === 'pending') {
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
+            <div className="w-12 h-12 bg-indigo-600 rounded-full animate-bounce mb-4"></div>
+            <h2 className="text-xl font-bold text-slate-700">Verifying your account...</h2>
+        </div>
+      );
+  }
+
+  if (verificationStatus === 'success' || verificationStatus === 'failed') {
+      return (
+        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
+           <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-slate-100">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl ${verificationStatus === 'success' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+                    {verificationStatus === 'success' ? '✓' : '✕'}
+                </div>
+                <h2 className="text-2xl font-bold text-slate-800 mb-2">
+                    {verificationStatus === 'success' ? 'Email Verified!' : 'Verification Failed'}
+                </h2>
+                <button 
+                  onClick={() => {
+                      setVerificationStatus(null);
+                      setIsLoginView(true);
+                  }}
+                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors"
+                >
+                    Continue to Login
+                </button>
+           </div>
+        </div>
+      );
+  }
 
   return (
     <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
@@ -139,12 +203,12 @@ const Login: React.FC = () => {
           )}
           
           <div>
-            <label className="block text-sm font-medium text-slate-700 mb-1">Email</label>
+            <label className="block text-sm font-medium text-slate-700 mb-1">Email / Username</label>
             <input
-              type="email"
+              type="text" 
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              placeholder="you@example.com"
+              placeholder="Enter email or username"
               className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-200 outline-none transition-all bg-slate-50 focus:bg-white"
             />
           </div>
@@ -161,7 +225,7 @@ const Login: React.FC = () => {
           </div>
 
           {error && (
-            <div className="text-red-500 text-sm bg-red-50 p-3 rounded-lg border border-red-100 text-center">
+            <div className={`text-sm p-3 rounded-lg border text-center font-medium animate-pop-in ${error.includes('Account created') ? 'bg-green-50 border-green-200 text-green-700' : 'bg-red-50 border-red-100 text-red-500'}`}>
               {error}
             </div>
           )}

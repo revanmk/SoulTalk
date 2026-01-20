@@ -8,6 +8,8 @@ export interface User {
   country?: string;
   emergencyContactName?: string;
   emergencyContactNumber?: string;
+  isVerified?: boolean;
+  verificationToken?: string;
 }
 
 export interface Message {
@@ -64,10 +66,11 @@ export interface AuthContextType {
   signup: (email: string, password: string, name: string, country: string, emergencyContactName: string, emergencyContactNumber: string, profilePic?: string) => Promise<boolean>;
   createAdmin: (email: string, password: string, name: string) => Promise<boolean>;
   updateProfile: (updatedData: Partial<User>) => Promise<void>;
+  verifyEmail: (token: string) => Promise<boolean>;
   logout: () => void;
   isLoading: boolean;
   getAllUsers: () => User[]; // Admin function
-  getUserData: (userId: string) => { journal: JournalEntry[], chat: Message[] }; // Admin function
+  fetchUserData: (userId: string) => Promise<{ journal: JournalEntry[], chat: Message[] }>; // Admin function
 }
 
 export interface WebcamRef {

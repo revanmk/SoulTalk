@@ -11,7 +11,13 @@ export const analyzeEmotion = async (base64Image: string): Promise<Emotion> => {
     // We need to convert base64 to an Image element for face-api
     const img = new Image();
     img.src = base64Image;
-    await img.decode(); // Wait for load
+    
+    // Wait for load, but with a timeout safety to avoid hanging
+    await new Promise((resolve, reject) => {
+        img.onload = resolve;
+        img.onerror = reject;
+        setTimeout(() => reject(new Error("Image load timeout")), 2000);
+    });
 
     const localResult = await localAI.detectLocalFaceEmotion(img);
     
@@ -20,10 +26,12 @@ export const analyzeEmotion = async (base64Image: string): Promise<Emotion> => {
       return localResult;
     }
   } catch (e) {
-    console.warn("Local emotion detection failed, falling back to cloud", e);
+    // Silent fail for local detection to allow fallback
+    console.debug("Local emotion detection skipped/failed:", e);
   }
 
   // 2. Fallback to Gemini Cloud
+  // Only use cloud if local failed.
   console.log("Using Cloud AI for Emotion...");
   return await geminiService.analyzeEmotion(base64Image);
 };

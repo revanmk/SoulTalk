@@ -3,8 +3,8 @@ import { Emotion } from '../types';
 // @ts-ignore
 import { pipeline } from '@xenova/transformers';
 
-// Declare face-api global loaded via CDN
-declare const faceapi: any;
+// Safe access to global faceapi
+const getFaceApi = () => (window as any).faceapi;
 
 let sentimentPipeline: any = null;
 let chatPipeline: any = null;
@@ -88,33 +88,53 @@ const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';
 
 export const loadFaceModels = async () => {
   if (areFaceModelsLoaded || isFaceModelLoading) return;
+  
+  const faceapi = getFaceApi();
+  if (!faceapi) {
+      console.warn("face-api.js not loaded yet");
+      return;
+  }
+
   isFaceModelLoading = true;
 
   try {
-    console.log("Loading Local Face Models...");
+    console.log("Loading Local Face Models (TinyFace)...");
+    // Switch to TinyFaceDetector for better performance/reliability on web
     await Promise.all([
-      faceapi.nets.ssdMobilenetv1.loadFromUri(MODEL_URL),
+      faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
       faceapi.nets.faceExpressionNet.loadFromUri(MODEL_URL)
     ]);
     areFaceModelsLoaded = true;
-    console.log("Local Face Models Loaded");
+    console.log("Local Face Models Loaded Successfully");
   } catch (err) {
-    console.error("Failed to load local face models:", err);
+    console.error("Failed to load local face models. Check network/CORS.", err);
   } finally {
     isFaceModelLoading = false;
   }
 };
 
 export const detectLocalFaceEmotion = async (imageElement: HTMLImageElement | HTMLVideoElement): Promise<Emotion | null> => {
+  const faceapi = getFaceApi();
+  if (!faceapi) return null;
+
   if (!areFaceModelsLoaded) {
     await loadFaceModels();
   }
   
+  if (!areFaceModelsLoaded) {
+      console.warn("Skipping detection: Models not loaded.");
+      return null;
+  }
+  
   try {
-    // Detect single face with expressions
-    const detections = await faceapi.detectSingleFace(imageElement).withFaceExpressions();
+    // Use TinyFaceDetectorOptions
+    const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 224, scoreThreshold: 0.5 });
+    const detections = await faceapi.detectSingleFace(imageElement, options).withFaceExpressions();
     
-    if (!detections) return null;
+    if (!detections) {
+        // console.log("No face detected in frame");
+        return null;
+    }
 
     // expressions is an object { neutral: 0.9, happy: 0.1 ... }
     const expressions = detections.expressions;
@@ -136,7 +156,7 @@ export const detectLocalFaceEmotion = async (imageElement: HTMLImageElement | HT
 
     return map[topEmotion] || Emotion.NEUTRAL;
   } catch (err) {
-    console.warn("Local Face Detection Failed:", err);
+    console.warn("Local Face Detection Runtime Error:", err);
     return null;
   }
 };

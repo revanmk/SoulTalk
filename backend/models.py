@@ -16,6 +16,8 @@ class User(Base):
     emergency_contact_name = Column(String, nullable=True)
     emergency_contact_number = Column(String, nullable=True)
     is_admin = Column(Boolean, default=False)
+    is_verified = Column(Boolean, default=False)
+    verification_token = Column(String, nullable=True)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
 class ChatMessage(Base):

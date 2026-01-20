@@ -8,87 +8,122 @@ interface WebcamCaptureProps {
   isChatActive: boolean;
 }
 
+// Custom hook to manage MediaStream state robustly
+const useCameraStream = (hasConsent: boolean) => {
+  const [stream, setStream] = useState<MediaStream | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(false);
+
+  useEffect(() => {
+    let activeStream: MediaStream | null = null;
+    let isMounted = true;
+
+    const initCamera = async () => {
+      if (!hasConsent) return;
+      
+      setIsLoading(true);
+      setError(null);
+
+      try {
+        const constraints = { video: { width: 320, height: 240, facingMode: 'user' } };
+        const mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+        
+        if (isMounted) {
+          activeStream = mediaStream;
+          setStream(mediaStream);
+        } else {
+          // Component unmounted during load, cleanup immediately
+          mediaStream.getTracks().forEach(track => track.stop());
+        }
+      } catch (err: any) {
+        if (isMounted) {
+          console.error("Camera Error:", err);
+          setError("Access denied or camera not available.");
+        }
+      } finally {
+        if (isMounted) setIsLoading(false);
+      }
+    };
+
+    if (hasConsent) {
+      initCamera();
+    } else {
+      setStream(null);
+    }
+
+    return () => {
+      isMounted = false;
+      if (activeStream) {
+        activeStream.getTracks().forEach(track => track.stop());
+      }
+    };
+  }, [hasConsent]);
+
+  return { stream, error, isLoading };
+};
+
 const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onEmotionDetected, isChatActive }) => {
   const videoRef = useRef<HTMLVideoElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
-  
-  const [streamActive, setStreamActive] = useState(false);
-  const [permissionError, setPermissionError] = useState(false);
   const [hasConsent, setHasConsent] = useState(false);
+  
+  // Use custom hook
+  const { stream, error, isLoading } = useCameraStream(hasConsent);
 
-  const startCamera = async () => {
-    try {
-      // Small resolution for faster local processing
-      const stream = await navigator.mediaDevices.getUserMedia({ video: { width: 320, height: 240 } });
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        setStreamActive(true);
-        setPermissionError(false);
-      }
-    } catch (err) {
-      console.error("Error accessing webcam:", err);
-      setPermissionError(true);
-    }
-  };
-
-  const stopCamera = () => {
-    if (videoRef.current && videoRef.current.srcObject) {
-      const stream = videoRef.current.srcObject as MediaStream;
-      stream.getTracks().forEach(track => track.stop());
+  // Attach stream to video element
+  useEffect(() => {
+    if (videoRef.current && stream) {
+      videoRef.current.srcObject = stream;
+    } else if (videoRef.current) {
       videoRef.current.srcObject = null;
-      setStreamActive(false);
     }
-  };
-
-  const handleToggleConsent = () => {
-    if (hasConsent) {
-      setHasConsent(false);
-      stopCamera();
-    } else {
-      setHasConsent(true);
-    }
-  };
+  }, [stream]);
 
   const captureAndAnalyze = useCallback(async () => {
-    if (!videoRef.current || !canvasRef.current || !streamActive) return;
-
+    if (!videoRef.current || !canvasRef.current || !stream) return;
+    
     const video = videoRef.current;
+    
+    // Crucial check: Ensure video has valid dimensions and data
+    if (video.readyState !== 4 || video.videoWidth === 0 || video.videoHeight === 0) {
+        return;
+    }
+
     const canvas = canvasRef.current;
     const context = canvas.getContext('2d');
 
     if (context) {
+      // Match canvas size to video size
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
+      
+      // Draw frame
       context.drawImage(video, 0, 0, canvas.width, canvas.height);
       
-      const imageSrc = canvas.toDataURL('image/jpeg');
+      // Get data URL
+      const imageSrc = canvas.toDataURL('image/jpeg', 0.8);
       
-      // unifiedAIService will attempt local first, then cloud
-      const emotion = await analyzeEmotion(imageSrc);
-      onEmotionDetected(emotion);
+      // Analyze
+      try {
+         const emotion = await analyzeEmotion(imageSrc);
+         if (emotion) onEmotionDetected(emotion);
+      } catch (e) {
+         console.warn("Analysis failed:", e);
+      }
     }
-  }, [streamActive, onEmotionDetected]);
+  }, [stream, onEmotionDetected]);
 
+  // Polling Effect
   useEffect(() => {
-    if (hasConsent) {
-      startCamera();
-    } else {
-      stopCamera();
-    }
-    return () => stopCamera();
-  }, [hasConsent]);
+    if (!isChatActive || !hasConsent || !stream) return;
 
-  // Poll for emotion
-  useEffect(() => {
-    if (!isChatActive || !streamActive || !hasConsent) return;
-
-    // Polling interval can be faster now that we have local models (e.g., 3s instead of 10s)
-    const intervalId = setInterval(() => {
-      captureAndAnalyze();
-    }, 5000); 
-
+    const intervalId = setInterval(captureAndAnalyze, 3000); // 3 seconds interval
     return () => clearInterval(intervalId);
-  }, [isChatActive, streamActive, hasConsent, captureAndAnalyze]);
+  }, [isChatActive, hasConsent, stream, captureAndAnalyze]);
+
+  const handleToggleConsent = () => {
+    setHasConsent(prev => !prev);
+  };
 
   if (!hasConsent) {
     return (
@@ -107,28 +142,45 @@ const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onEmotionDetected, isChat
     );
   }
 
-  if (permissionError) {
+  if (error) {
     return (
-      <div className="text-xs text-red-500 bg-red-50 p-2 rounded border border-red-200">
-        Camera access denied.
+      <div className="text-xs text-red-500 bg-red-50 p-3 rounded-lg border border-red-200 flex flex-col items-center gap-2">
+        <span>{error}</span>
+        <button 
+           onClick={() => setHasConsent(false)}
+           className="text-red-700 underline hover:no-underline"
+        >
+          Try Again / Cancel
+        </button>
       </div>
     );
   }
 
   return (
     <div className="relative group">
-      <video
-        ref={videoRef}
-        autoPlay
-        playsInline
-        muted
-        className={`w-full h-32 object-cover rounded-lg border-2 border-indigo-100 shadow-sm transition-opacity duration-500 ${streamActive ? 'opacity-100' : 'opacity-0'}`}
-      />
+      {/* Hidden Canvas for Processing */}
       <canvas ref={canvasRef} className="hidden" />
+
+      {/* Video Feed */}
+      <div className="relative rounded-lg overflow-hidden border-2 border-indigo-100 shadow-sm bg-black">
+        {isLoading && (
+            <div className="absolute inset-0 flex items-center justify-center bg-slate-100 z-10">
+                <div className="w-5 h-5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+            </div>
+        )}
+        <video
+            ref={videoRef}
+            autoPlay
+            playsInline
+            muted
+            className={`w-full h-32 object-cover transform scale-x-[-1] transition-opacity duration-500 ${!isLoading && stream ? 'opacity-100' : 'opacity-0'}`}
+        />
+      </div>
       
+      {/* Controls Overlay */}
       <button 
         onClick={handleToggleConsent}
-        className="absolute top-1 right-1 bg-black/40 hover:bg-black/60 text-white p-1 rounded-full backdrop-blur-sm transition-colors"
+        className="absolute top-2 right-2 bg-black/40 hover:bg-black/60 text-white p-1.5 rounded-full backdrop-blur-sm transition-colors z-20"
         title="Disable Camera"
       >
         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
@@ -136,9 +188,12 @@ const WebcamCapture: React.FC<WebcamCaptureProps> = ({ onEmotionDetected, isChat
         </svg>
       </button>
 
-      <div className="absolute bottom-1 right-1 bg-indigo-600/80 text-white text-[10px] px-1.5 py-0.5 rounded backdrop-blur-sm animate-pulse">
-        AI Active
-      </div>
+      {stream && !isLoading && (
+        <div className="absolute bottom-2 right-2 bg-indigo-600/90 text-white text-[10px] px-2 py-0.5 rounded-full backdrop-blur-sm animate-pulse z-20 shadow-sm flex items-center gap-1">
+          <span className="w-1.5 h-1.5 bg-white rounded-full"></span>
+          Live
+        </div>
+      )}
     </div>
   );
 };

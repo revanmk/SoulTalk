@@ -1,11 +1,11 @@
 
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useContent } from '../context/ContentContext';
 import { User, Message, JournalEntry, Emotion, Exercise, Soundscape, VisualizationType } from '../types';
 
 const AdminPortal: React.FC = () => {
-  const { getAllUsers, getUserData, logout, createAdmin } = useAuth();
+  const { getAllUsers, fetchUserData, logout, createAdmin } = useAuth();
   const { exercises, soundscapes, addExercise, deleteExercise, addSoundscape, deleteSoundscape } = useContent();
   
   const [activeView, setActiveView] = useState<'users' | 'content' | 'admins'>('users');
@@ -13,7 +13,23 @@ const AdminPortal: React.FC = () => {
   
   const users = getAllUsers();
   const selectedUser = selectedUserId ? users.find(u => u.id === selectedUserId) : null;
-  const userData = selectedUserId ? getUserData(selectedUserId) : null;
+  
+  // Local state for fetched user data
+  const [userData, setUserData] = useState<{ journal: JournalEntry[], chat: Message[] } | null>(null);
+
+  // Fetch data when user selection changes
+  useEffect(() => {
+    if (selectedUserId) {
+        fetchUserData(selectedUserId).then(data => {
+            setUserData(data);
+        }).catch(err => {
+            console.error("Failed to fetch user data:", err);
+            setUserData(null);
+        });
+    } else {
+        setUserData(null);
+    }
+  }, [selectedUserId]); // Dependency on selectedUserId matches useEffect usage
 
   // --- New Admin Creation State ---
   const [newAdminEmail, setNewAdminEmail] = useState('');
@@ -80,9 +96,11 @@ const AdminPortal: React.FC = () => {
   }, [userData]);
 
   const heatmapData = useMemo(() => {
-    if (!userData) return { map: [], max: 0 };
-
+    // Initialize default empty map (7 days x 24 hours)
     const map = Array(7).fill(0).map(() => Array(24).fill(0));
+    
+    if (!userData) return { map, max: 0 };
+
     let max = 0;
 
     userData.chat.forEach(msg => {
@@ -360,7 +378,7 @@ const AdminPortal: React.FC = () => {
                             <div key={day} className="flex items-center">
                             <div className="w-10 text-[10px] text-slate-500 font-medium">{day}</div>
                             <div className="flex-1 grid grid-cols-24 gap-1">
-                                {heatmapData.map[dIdx].map((count, hIdx) => (
+                                {heatmapData.map[dIdx] && heatmapData.map[dIdx].map((count, hIdx) => (
                                     <div 
                                     key={hIdx} 
                                     className={`aspect-square rounded-[2px] ${getHeatmapColor(count, heatmapData.max)} hover:ring-1 hover:ring-indigo-400 relative group transition-colors`}

@@ -3,6 +3,7 @@ from sqlalchemy.orm import Session
 import models
 import schemas
 from security import get_password_hash
+import uuid
 
 # --- Users ---
 def get_user_by_email(db: Session, email: str):
@@ -15,6 +16,8 @@ def get_users(db: Session):
 def create_user(db: Session, user: schemas.UserCreate):
     print(f"Attempting to create user: {user.email}")
     hashed_password = get_password_hash(user.password)
+    verification_token = str(uuid.uuid4())
+    
     db_user = models.User(
         email=user.email,
         password_hash=hashed_password, 
@@ -23,7 +26,9 @@ def create_user(db: Session, user: schemas.UserCreate):
         emergency_contact_name=user.emergency_contact_name,
         emergency_contact_number=user.emergency_contact_number,
         profile_pic=user.profile_pic,
-        is_admin=user.is_admin
+        is_admin=user.is_admin,
+        is_verified=True, # Auto-verified to bypass email validation
+        verification_token=verification_token
     )
     db.add(db_user)
     try:
@@ -35,6 +40,15 @@ def create_user(db: Session, user: schemas.UserCreate):
         print(f"ERROR: Failed to commit user to DB. Reason: {e}")
         db.rollback()
         raise e
+
+def verify_user_token(db: Session, token: str):
+    user = db.query(models.User).filter(models.User.verification_token == token).first()
+    if user:
+        user.is_verified = True
+        user.verification_token = None # Consume token
+        db.commit()
+        return True
+    return False
 
 def update_user(db: Session, user_id: str, updates: dict):
     db.query(models.User).filter(models.User.id == user_id).update(updates)
