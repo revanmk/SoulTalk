@@ -82,6 +82,30 @@ SoulTalk:`;
   }
 };
 
+export const summarizeLocalText = async (text: string): Promise<string | null> => {
+    if (!chatPipeline) {
+        if (!isChatModelLoading) loadChatModel();
+        return null;
+    }
+
+    try {
+        // LaMini-Flan-T5 handles "Summarize:" prompts well
+        const prompt = `Summarize this conversation briefly:\n\n${text}`;
+
+        const result = await chatPipeline(prompt, {
+            max_new_tokens: 100,
+            temperature: 0.5,
+            do_sample: false // Deterministic for summaries
+        });
+
+        const summary = result[0]?.generated_text;
+        return summary || null;
+    } catch (err) {
+        console.warn("Local Summarization Failed:", err);
+        return null;
+    }
+};
+
 // --- FACE EMOTION (face-api.js) ---
 
 const MODEL_URL = 'https://justadudewhohacks.github.io/face-api.js/models';

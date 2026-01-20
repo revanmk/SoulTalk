@@ -11,6 +11,7 @@ import crud
 import database
 import security
 import time
+from ai_engine import ai_engine  # Import the AI Engine
 
 # Create tables if they don't exist
 try:
@@ -124,6 +125,25 @@ def get_all_users(db: Session = Depends(get_db)):
     users = crud.get_users(db)
     print(f"Returning {len(users)} users")
     return users
+
+# --- AI Analysis Controller ---
+
+class TextAnalysisRequest(BaseModel):
+    text: str
+
+class TextAnalysisResponse(BaseModel):
+    sentiment: str
+    emotion: str
+    is_crisis: bool
+
+@app.post("/api/analyze", response_model=TextAnalysisResponse)
+def analyze_text(request: TextAnalysisRequest):
+    result = ai_engine.analyze_text(request.text)
+    return TextAnalysisResponse(
+        sentiment=result["sentiment"],
+        emotion=result["emotion"],
+        is_crisis=result["is_crisis"]
+    )
 
 # --- Crisis Alerting ---
 

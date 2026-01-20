@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Chat, GenerateContentResponse } from "@google/genai";
 import { SOUL_TALK_SYSTEM_INSTRUCTION, EMOTION_PROMPT } from '../constants';
 import { Emotion } from '../types';
@@ -42,6 +43,20 @@ export const sendMessageToSoulTalk = async (message: string): Promise<string> =>
     console.error("Gemini Chat Error:", error);
     return "I'm sorry, I seem to be having connection issues. But I'm still listening.";
   }
+};
+
+export const summarizeChatHistory = async (transcript: string): Promise<string> => {
+    const ai = getAI();
+    try {
+        const response = await ai.models.generateContent({
+            model: 'gemini-3-flash-preview',
+            contents: `Summarize the following conversation in 2-3 sentences, focusing on the user's emotional state and key topics:\n\n${transcript}`,
+        });
+        return response.text || "Could not generate summary.";
+    } catch (error) {
+        console.error("Gemini Summary Error:", error);
+        return "Unable to generate summary at this time.";
+    }
 };
 
 export const analyzeEmotion = async (base64Image: string): Promise<Emotion> => {

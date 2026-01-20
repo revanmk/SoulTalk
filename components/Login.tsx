@@ -78,13 +78,7 @@ const Login: React.FC = () => {
         await login(email, password);
       } else {
         await signup(email, password, name, country, emergencyName, emergencyNumber, profilePic);
-        // Auto-switch to login view with success message
-        setIsLoginView(true);
-        // We use the error state to show success message temporarily for simplicity
-        setError('Account created! Please log in.');
-        
-        // Reset form slightly
-        // Keep email/pass filled for convenience
+        // Successful signup will auto-login via AuthContext, triggering a redirect to ChatInterface
       }
     } catch (err: any) {
       // Display the actual error message (e.g., "Cannot connect to server")

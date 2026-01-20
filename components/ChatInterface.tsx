@@ -1,7 +1,7 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { Message, User, Emotion, Exercise, JournalEntry } from '../types';
-import { processChatMessage } from '../services/unifiedAIService';
+import { processChatMessage, generateConversationSummary } from '../services/unifiedAIService';
 import { dbService } from '../services/databaseService';
 import WebcamCapture from './WebcamCapture';
 import Journal from './Journal';
@@ -37,6 +37,10 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onLogout }) => {
   const [isLoading, setIsLoading] = useState(false);
   const [currentEmotion, setCurrentEmotion] = useState<Emotion>(Emotion.NEUTRAL);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+
+  // Summary State
+  const [chatSummary, setChatSummary] = useState<string | null>(null);
+  const [isSummarizing, setIsSummarizing] = useState(false);
 
   // Journal State for Progress Tab
   const [journalEntries, setJournalEntries] = useState<JournalEntry[]>([]);
@@ -110,6 +114,26 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onLogout }) => {
       }
     }
   };
+
+  const handleRefreshSummary = async () => {
+      if (messages.length < 2) return;
+      setIsSummarizing(true);
+      try {
+          const summary = await generateConversationSummary(messages);
+          setChatSummary(summary);
+      } catch (e) {
+          console.error("Summary failed:", e);
+      } finally {
+          setIsSummarizing(false);
+      }
+  };
+
+  // Generate initial summary if we have history loaded
+  useEffect(() => {
+      if (messages.length > 5 && !chatSummary && !isSummarizing) {
+          handleRefreshSummary();
+      }
+  }, [messages.length]); // Only re-check on length change
 
   const getUserLocation = (): Promise<string | null> => {
     return new Promise((resolve) => {
@@ -362,6 +386,44 @@ const ChatInterface: React.FC<ChatInterfaceProps> = ({ user, onLogout }) => {
           {activeTab === 'chat' && (
              <>
                 <div className="flex-1 overflow-y-auto p-4 sm:p-6 space-y-6">
+                  {/* Chat Summary Banner */}
+                  {(chatSummary || messages.length > 5) && (
+                      <div className="bg-gradient-to-r from-violet-50 to-indigo-50 border border-indigo-100 rounded-xl p-4 animate-pop-in mx-auto max-w-2xl relative group">
+                          <div className="flex justify-between items-start mb-2">
+                              <h3 className="text-xs font-bold text-indigo-700 uppercase tracking-wide flex items-center gap-1">
+                                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3">
+                                    <path fillRule="evenodd" d="M10 18a8 8 0 100-16 8 8 0 000 16zm.75-13a.75.75 0 00-1.5 0v5c0 .414.336.75.75.75h4a.75.75 0 000-1.5h-3.25V5z" clipRule="evenodd" />
+                                  </svg>
+                                  Conversation Summary
+                              </h3>
+                              <button 
+                                onClick={handleRefreshSummary}
+                                disabled={isSummarizing}
+                                className="text-[10px] text-indigo-500 hover:text-indigo-700 flex items-center gap-1 bg-white px-2 py-1 rounded shadow-sm border border-indigo-100 hover:shadow-md transition-all"
+                              >
+                                {isSummarizing ? (
+                                    <span className="w-3 h-3 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin"></span>
+                                ) : (
+                                    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-3 h-3">
+                                        <path strokeLinecap="round" strokeLinejoin="round" d="M16.023 9.348h4.992v-.001M2.985 19.644v-4.992m0 0h4.992m-4.993 0l3.181 3.183a8.25 8.25 0 0013.803-3.7M4.031 9.865a8.25 8.25 0 0113.803-3.7l3.181 3.182m0-4.991v4.99" />
+                                    </svg>
+                                )}
+                                Refresh
+                              </button>
+                          </div>
+                          {isSummarizing && !chatSummary ? (
+                              <div className="space-y-2 animate-pulse">
+                                  <div className="h-2 bg-indigo-200 rounded w-3/4"></div>
+                                  <div className="h-2 bg-indigo-200 rounded w-1/2"></div>
+                              </div>
+                          ) : (
+                              <p className="text-xs text-slate-600 leading-relaxed italic">
+                                  {chatSummary || "Click refresh to summarize recent messages..."}
+                              </p>
+                          )}
+                      </div>
+                  )}
+
                   {/* Stress Relief Suggestion Banner */}
                   {showExerciseSuggestion && (
                     <div className="bg-indigo-50 border border-indigo-100 rounded-xl p-4 flex justify-between items-center animate-pop-in shadow-sm mx-auto max-w-2xl">

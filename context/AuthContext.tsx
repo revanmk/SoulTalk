@@ -77,7 +77,10 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         isAdmin: false
       });
       
-      // Do NOT set user session immediately. Require verification.
+      // Auto-login user immediately after signup
+      setUser(newUser);
+      localStorage.setItem('soultalk_session_uid', newUser.id);
+      
       setIsLoading(false);
       return { success: true, token: newUser.verificationToken };
     } catch (e) {
