@@ -1,11 +1,12 @@
 import React from 'react';
-import { AuthProvider, useAuth } from './frontend/src/context/AuthContext';
-import Login from './frontend/src/components/Login';
-import ChatInterface from './frontend/src/components/ChatInterface';
-import AdminPortal from './frontend/src/components//AdminPortal';
+import { AuthProvider, useAuth } from './context/AuthContext';
+import { ContentProvider } from './context/ContentContext';
+import Login from './components/Login';
+import ChatInterface from './components/ChatInterface';
+import AdminPortal from './components/AdminPortal';
 
 const AppContent: React.FC = () => {
-  const { user, login, logout, isLoading } = useAuth();
+  const { user, logout, isLoading } = useAuth();
 
   if (isLoading) {
     return (
@@ -31,11 +32,13 @@ const AppContent: React.FC = () => {
 
 const App: React.FC = () => {
   return (
-    <AuthProvider>
-      <div className="antialiased text-slate-900 bg-white">
-        <AppContent />
-      </div>
-    </AuthProvider>
+    <ContentProvider>
+      <AuthProvider>
+        <div className="antialiased text-slate-900 bg-white">
+          <AppContent />
+        </div>
+      </AuthProvider>
+    </ContentProvider>
   );
 };
 
