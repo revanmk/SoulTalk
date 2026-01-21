@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import type { User, JournalEntry } from '../../../types';
 import { Emotion } from '../../../types';
+import { dbService } from '../services/databaseService';
 
 interface JournalProps {
   user: User;
@@ -11,37 +12,54 @@ const Journal: React.FC<JournalProps> = ({ user }) => {
   const [content, setContent] = useState('');
   const [selectedMood, setSelectedMood] = useState<Emotion>(Emotion.NEUTRAL);
   const [view, setView] = useState<'write' | 'history' | 'insights'>('write');
-
-  const storageKey = `soultalk_journal_${user.id}`;
+  const [isLoading, setIsLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
-    const saved = localStorage.getItem(storageKey);
-    if (saved) {
+    const loadEntries = async () => {
+      setIsLoading(true);
       try {
-        setEntries(JSON.parse(saved));
+        const journalEntries = await dbService.getJournalEntries(user.id);
+        setEntries(journalEntries.map(entry => ({
+          ...entry,
+          timestamp: typeof entry.timestamp === 'string' ? entry.timestamp : new Date(entry.timestamp).toISOString()
+        })));
       } catch (e) {
-        console.error("Failed to load journal", e);
+        console.error("Failed to load journal entries from database", e);
+      } finally {
+        setIsLoading(false);
       }
-    }
-  }, [storageKey]);
-
-  const saveEntry = () => {
-    if (!content.trim()) return;
-
-    const newEntry: JournalEntry = {
-      id: Date.now().toString(),
-      timestamp: new Date().toISOString(),
-      content,
-      mood: selectedMood,
-      tags: []
     };
+    loadEntries();
+  }, [user.id]);
 
-    const updatedEntries = [newEntry, ...entries];
-    setEntries(updatedEntries);
-    localStorage.setItem(storageKey, JSON.stringify(updatedEntries));
-    setContent('');
-    setSelectedMood(Emotion.NEUTRAL);
-    setView('history');
+  const saveEntry = async () => {
+    if (!content.trim() || isSaving) return;
+
+    setIsSaving(true);
+    try {
+      const newEntry: JournalEntry = {
+        id: Date.now().toString(), // Temporary ID, will be replaced by backend
+        timestamp: new Date().toISOString(),
+        content,
+        mood: selectedMood,
+        tags: []
+      };
+
+      // Save to database
+      const savedEntry = await dbService.createJournalEntry(user.id, newEntry);
+      
+      // Update local state with the saved entry (which has the real ID from backend)
+      setEntries(prev => [savedEntry, ...prev]);
+      setContent('');
+      setSelectedMood(Emotion.NEUTRAL);
+      setView('history');
+    } catch (e) {
+      console.error("Failed to save journal entry to database", e);
+      alert("Failed to save entry. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const getMoodColor = (mood: Emotion) => {
@@ -130,10 +148,17 @@ const Journal: React.FC<JournalProps> = ({ user }) => {
             <div className="mt-6 flex justify-end">
               <button
                 onClick={saveEntry}
-                disabled={!content.trim()}
-                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 py-2.5 rounded-lg font-medium transition-colors shadow-sm"
+                disabled={!content.trim() || isSaving}
+                className="bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 text-white px-6 py-2.5 rounded-lg font-medium transition-colors shadow-sm flex items-center gap-2"
               >
-                Save Entry
+                {isSaving ? (
+                  <>
+                    <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
+                    Saving...
+                  </>
+                ) : (
+                  'Save Entry'
+                )}
               </button>
             </div>
           </div>
@@ -141,7 +166,12 @@ const Journal: React.FC<JournalProps> = ({ user }) => {
 
         {view === 'history' && (
           <div className="max-w-2xl mx-auto space-y-4 animate-pop-in">
-            {entries.length === 0 ? (
+            {isLoading ? (
+              <div className="text-center py-10 text-slate-400">
+                <div className="w-8 h-8 border-2 border-indigo-400 border-t-transparent rounded-full animate-spin mx-auto mb-2"></div>
+                <p>Loading journal entries...</p>
+              </div>
+            ) : entries.length === 0 ? (
               <div className="text-center py-10 text-slate-400">
                 <p>No journal entries yet.</p>
                 <button onClick={() => setView('write')} className="text-indigo-600 hover:underline mt-2 text-sm">Write your first entry</button>

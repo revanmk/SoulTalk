@@ -10,24 +10,43 @@ MODEL_DIR = os.path.join(os.path.dirname(__file__), "models")
 
 class AIEngine:
     def __init__(self):
+        print(f"Initializing AI Engine...")
+        print(f"Model directory: {MODEL_DIR}")
+        
+        # Ensure model directory exists
+        if not os.path.exists(MODEL_DIR):
+            print(f"WARNING: Model directory does not exist: {MODEL_DIR}")
+            os.makedirs(MODEL_DIR, exist_ok=True)
+            print(f"Created model directory: {MODEL_DIR}")
+        
         self.sentiment_model = self._load_model("sentiment_model.pkl")
         self.emotion_model = self._load_model("emotion_model.pkl")
         self.crisis_model = self._load_model("crisis_model.pkl")
         
-        # Crisis keywords fallback
+        # Crisis keywords fallback (always available)
         self.crisis_keywords = [
             'suicide', 'kill myself', 'die', 'end it', 'hurt myself', 
-            'cutting', 'overdose', 'depressed', 'anxiety', 'help me'
+            'cutting', 'overdose', 'depressed', 'anxiety', 'help me',
+            'want to die', 'not worth living', 'end my life'
         ]
+        
+        print(f"AI Engine initialized. Models loaded: sentiment={self.sentiment_model is not None}, "
+              f"emotion={self.emotion_model is not None}, crisis={self.crisis_model is not None}")
 
     def _load_model(self, filename):
         path = os.path.join(MODEL_DIR, filename)
         if os.path.exists(path):
             try:
                 print(f"Loading model: {filename}")
-                return joblib.load(path)
+                model = joblib.load(path)
+                print(f"Successfully loaded {filename}")
+                return model
             except Exception as e:
-                print(f"Failed to load {filename}: {e}")
+                print(f"ERROR: Failed to load {filename}: {e}")
+                print(f"Model file exists but cannot be loaded. This is okay - keyword fallbacks will be used.")
+        else:
+            print(f"WARNING: Model file not found: {path}")
+            print(f"This is okay - keyword-based fallbacks will be used for analysis.")
         return None
 
     def analyze_text(self, text):

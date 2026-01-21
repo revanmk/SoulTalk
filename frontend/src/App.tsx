@@ -5,8 +5,30 @@ import Login from './components/Login';
 import ChatInterface from './components/ChatInterface';
 import AdminPortal from './components/AdminPortal';
 
+// #region agent log
+const __dbg = (hypothesisId: string, location: string, message: string, data: Record<string, any> = {}) => {
+  fetch('http://127.0.0.1:7242/ingest/b1a760f8-324e-4fe9-afbb-7303f8572f5e', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'debug-session',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+};
+// #endregion agent log
+
 const AppContent: React.FC = () => {
   const { user, logout, isLoading } = useAuth();
+
+  // #region agent log
+  __dbg('H6', 'App.tsx:AppContent', 'render', { isLoading, hasUser: !!user, isAdmin: !!user?.isAdmin });
+  // #endregion agent log
 
   if (isLoading) {
     return (

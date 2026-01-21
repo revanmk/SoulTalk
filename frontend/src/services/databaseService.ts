@@ -6,7 +6,18 @@ import type { User, Message, JournalEntry, Exercise, Soundscape } from '../../..
  * Uses backend API for persistence.
  */
 
-const API_BASE = 'http://localhost:8000';
+// #region agent log
+const __dbg = (hypothesisId: string, location: string, message: string, data: Record<string, any> = {}) => {
+  fetch('http://127.0.0.1:7242/ingest/b1a760f8-324e-4fe9-afbb-7303f8572f5e', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId, location, message, data, timestamp: Date.now() })
+  }).catch(() => {});
+};
+// #endregion agent log
+
+// Use environment variable for API base URL, fallback to localhost
+const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
 // Helper functions to convert between snake_case (backend) and camelCase (frontend)
 const convertUserFromBackend = (data: any): User => ({
@@ -125,30 +136,103 @@ export const dbService = {
     }
     // --------------------------------
 
-    const res = await fetch(`${API_BASE}/api/login`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({email, password})
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return convertUserFromBackend(data);
+    // #region agent log
+    __dbg('H2', 'databaseService.ts:loginUser', 'fetch start', { url: `${API_BASE}/api/login` });
+    // #endregion agent log
+
+    try {
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      const res = await fetch(`${API_BASE}/api/login`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({email, password}),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+
+      // #region agent log
+      __dbg('H2', 'databaseService.ts:loginUser', 'fetch done', { ok: res.ok, status: res.status });
+      // #endregion agent log
+
+      if (res.ok) {
+        const data = await res.json();
+        // #region agent log
+        __dbg('H2', 'databaseService.ts:loginUser', 'parsed json', { hasId: !!data?.id, hasEmail: !!data?.email, isAdmin: !!data?.is_admin });
+        // #endregion agent log
+        return convertUserFromBackend(data);
+      }
+      // #region agent log
+      __dbg('H2', 'databaseService.ts:loginUser', 'fetch not ok', { status: res.status, statusText: res.statusText });
+      // #endregion agent log
+      throw new Error('Login failed');
+    } catch (e: any) {
+      // #region agent log
+      __dbg('H2', 'databaseService.ts:loginUser', 'fetch error', { errorName: e?.name, errorMessage: e?.message, errorStack: e?.stack?.substring(0, 200) });
+      // #endregion agent log
+      // Convert timeout/network errors to user-friendly messages
+      if (e?.name === 'AbortError' || e?.message?.includes('aborted')) {
+        throw new Error('Connection timeout. Please ensure the backend server is running on http://localhost:8000');
+      }
+      if (e?.message?.includes('Failed to fetch') || e?.message?.includes('NetworkError')) {
+        throw new Error('Cannot connect to server. Please ensure the backend server is running on http://localhost:8000');
+      }
+      throw e;
     }
-    throw new Error('Login failed');
   },
 
   createUser: async (userData: Partial<User> & { password?: string }): Promise<User> => {
     const backendData = convertUserToBackend(userData);
-    const res = await fetch(`${API_BASE}/api/signup`, {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify(backendData)
-    });
-    if (res.ok) {
-      const data = await res.json();
-      return convertUserFromBackend(data);
+
+    // #region agent log
+    __dbg('H3', 'databaseService.ts:createUser', 'fetch start', { url: `${API_BASE}/api/signup` });
+    // #endregion agent log
+
+    try {
+      // Add timeout to prevent hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+      
+      const res = await fetch(`${API_BASE}/api/signup`, {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify(backendData),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+
+      // #region agent log
+      __dbg('H3', 'databaseService.ts:createUser', 'fetch done', { ok: res.ok, status: res.status });
+      // #endregion agent log
+
+      if (res.ok) {
+        const data = await res.json();
+        // #region agent log
+        __dbg('H3', 'databaseService.ts:createUser', 'parsed json', { hasId: !!data?.id, hasEmail: !!data?.email });
+        // #endregion agent log
+        return convertUserFromBackend(data);
+      }
+      // #region agent log
+      __dbg('H3', 'databaseService.ts:createUser', 'fetch not ok', { status: res.status, statusText: res.statusText });
+      // #endregion agent log
+      throw new Error('Signup failed');
+    } catch (e: any) {
+      // #region agent log
+      __dbg('H3', 'databaseService.ts:createUser', 'fetch error', { errorName: e?.name, errorMessage: e?.message, errorStack: e?.stack?.substring(0, 200) });
+      // #endregion agent log
+      // Convert timeout/network errors to user-friendly messages
+      if (e?.name === 'AbortError' || e?.message?.includes('aborted')) {
+        throw new Error('Connection timeout. Please ensure the backend server is running on http://localhost:8000');
+      }
+      if (e?.message?.includes('Failed to fetch') || e?.message?.includes('NetworkError')) {
+        throw new Error('Cannot connect to server. Please ensure the backend server is running on http://localhost:8000');
+      }
+      throw e;
     }
-    throw new Error('Signup failed');
   },
 
   verifyUser: async (token: string): Promise<boolean> => {

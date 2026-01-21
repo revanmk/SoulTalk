@@ -3,6 +3,24 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { COUNTRIES } from '../../constants';
 
+// #region agent log
+const __dbg = (hypothesisId: string, location: string, message: string, data: Record<string, any> = {}) => {
+  fetch('http://127.0.0.1:7242/ingest/b1a760f8-324e-4fe9-afbb-7303f8572f5e', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      sessionId: 'debug-session',
+      runId: 'pre-fix',
+      hypothesisId,
+      location,
+      message,
+      data,
+      timestamp: Date.now(),
+    }),
+  }).catch(() => {});
+};
+// #endregion agent log
+
 const Login: React.FC = () => {
   const { login, signup, verifyEmail, isLoading } = useAuth();
   const [isLoginView, setIsLoginView] = useState(true);
@@ -61,6 +79,20 @@ const Login: React.FC = () => {
     e.preventDefault();
     setError('');
 
+    // #region agent log
+    __dbg('H1', 'Login.tsx:handleSubmit', 'submit', {
+      isLoginView,
+      emailLen: (email || '').length,
+      passwordLen: (password || '').length,
+      hasName: !!name,
+      hasCountry: !!country,
+      hasEmergencyName: !!emergencyName,
+      hasEmergencyNumber: !!emergencyNumber,
+      hasProfilePic: !!profilePic,
+      isLoadingFromContext: isLoading,
+    });
+    // #endregion agent log
+
     if (!email || !password) {
       setError('Please enter email and password');
       return;
@@ -75,12 +107,27 @@ const Login: React.FC = () => {
 
     try {
       if (isLoginView) {
-        await login(email, password);
+        // #region agent log
+        __dbg('H2', 'Login.tsx:handleSubmit', 'calling login()', { emailLen: (email || '').length });
+        // #endregion agent log
+        const ok = await login(email, password);
+        // #region agent log
+        __dbg('H2', 'Login.tsx:handleSubmit', 'login() returned', { ok });
+        // #endregion agent log
       } else {
-        await signup(email, password, name, country, emergencyName, emergencyNumber, profilePic);
+        // #region agent log
+        __dbg('H3', 'Login.tsx:handleSubmit', 'calling signup()', { emailLen: (email || '').length });
+        // #endregion agent log
+        const res = await signup(email, password, name, country, emergencyName, emergencyNumber, profilePic);
+        // #region agent log
+        __dbg('H3', 'Login.tsx:handleSubmit', 'signup() returned', { success: !!res?.success, hasToken: !!res?.token });
+        // #endregion agent log
         // Successful signup will auto-login via AuthContext, triggering a redirect to ChatInterface
       }
     } catch (err: any) {
+      // #region agent log
+      __dbg('H4', 'Login.tsx:handleSubmit', 'submit error', { errMsg: String(err?.message || err) });
+      // #endregion agent log
       // Display the actual error message (e.g., "Cannot connect to server")
       setError(err.message || 'Authentication failed');
     }
