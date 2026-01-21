@@ -1,21 +1,30 @@
+/**
+ * Unified AI Service
+ * 
+ * Primary interface for all AI operations in the frontend.
+ * Routes requests to backend AI endpoints (HuggingFace + MediaPipe).
+ */
+
 import {
-  detectLocalSentiment,
-  detectLocalFaceEmotionFromBase64,
-  detectLocalCrisis,
-  generateLocalResponse,
-} from './localAIService';
-import { sendMessageToSoulTalk } from './geminiService';
+  analyzeText,
+  analyzeFaceEmotion,
+  getChatResponse,
+  mapToEmotion
+} from './backendAIService';
 import { Emotion } from '../../../types';
 import type { Message } from '../../../types';
 
 /**
- * Emotion analysis from webcam/base64 image
- * Used by WebcamCapture.tsx
+ * Emotion analysis from webcam/base64 image.
+ * Calls backend MediaPipe service.
  */
 export const analyzeEmotion = async (base64Image: string): Promise<Emotion> => {
   try {
-    const emotion = await detectLocalFaceEmotionFromBase64(base64Image);
-    return emotion ?? Emotion.NEUTRAL;
+    const result = await analyzeFaceEmotion(base64Image);
+    if (result && result.face_detected) {
+      return mapToEmotion(result.emotion);
+    }
+    return Emotion.NEUTRAL;
   } catch (e) {
     console.warn('analyzeEmotion failed, defaulting to NEUTRAL:', e);
     return Emotion.NEUTRAL;
@@ -30,50 +39,29 @@ export interface ChatProcessResult {
 }
 
 /**
- * Local-only chat processing (no cloud). Returns a short response plus sentiment/crisis flags.
+ * Process a chat message through the backend AI.
+ * Uses HuggingFace for analysis and Gemini for response generation.
  */
 export const processChatMessage = async (
   message: string,
   currentEmotion: Emotion
 ): Promise<ChatProcessResult> => {
-  // Sentiment (may be null if model unavailable)
-  const sentimentData = await detectLocalSentiment(message);
-  const sentimentLabel = sentimentData?.label;
-  const sentimentScore = sentimentData?.score;
+  // 1. Analyze text for sentiment, emotion, crisis
+  const analysisResult = await analyzeText(message);
 
-  // Crisis detection
-  const crisisDetected = await detectLocalCrisis(message);
+  const crisisDetected = analysisResult?.is_crisis ?? false;
+  const sentimentLabel = analysisResult?.sentiment;
+  const sentimentScore = analysisResult?.sentiment_score;
+  const detectedEmotion = analysisResult?.emotion ?? 'neutral';
 
-  // 1. Try Gemini Cloud AI first
-  let response: string | null = null;
-  try {
-    // Only use Gemini if no crisis is detected locally (for speed/safety) 
-    // OR strictly prefer Gemini. 
-    // Let's try Gemini first, but if it fails, fall back.
+  // 2. Get chat response from backend
+  const chatResult = await getChatResponse(
+    message,
+    detectedEmotion,
+    crisisDetected
+  );
 
-    // Note: You might want to skip AI generation if crisis is detected locally 
-    // to ensure the hardcoded safe response is used immediately?
-    // For now, let's allow Gemini to reply unless it fails.
-
-    // Actually, let's prioritize safety: if local crisis detected, maybe 
-    // we still want the "safe" local response? 
-    // But the plan said "Integrate Gemini". 
-    // Let's try Gemini.
-
-    response = await sendMessageToSoulTalk(message);
-  } catch (e) {
-    console.error("Gemini Service Failed (Model: gemini-flash-latest). Falling back to local.", e);
-    response = null;
-  }
-
-  // 2. Fallback to Local Rule-Based if Gemini failed
-  if (!response) {
-    response = generateLocalResponse({
-      emotion: currentEmotion,
-      sentiment: sentimentData || undefined,
-      crisis: crisisDetected,
-    });
-  }
+  const response = chatResult?.response ?? "I'm here with you. Tell me more.";
 
   return {
     response,
@@ -84,7 +72,8 @@ export const processChatMessage = async (
 };
 
 /**
- * Simple local summary of conversation (concise join)
+ * Generate a simple summary of the conversation.
+ * For now, uses local summary (backend summarization can be added).
  */
 export const generateConversationSummary = async (messages: Message[]): Promise<string> => {
   if (!messages || messages.length === 0) return 'No conversation yet.';

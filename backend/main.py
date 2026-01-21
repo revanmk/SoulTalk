@@ -1,4 +1,8 @@
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
 from fastapi import FastAPI, Depends, HTTPException, status, BackgroundTasks, Request
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
@@ -11,7 +15,8 @@ import crud
 import database
 import security
 import time
-from ai_engine import ai_engine  # Import the AI Engine
+from ai_engine import ai_engine  # Import the AI Engine (legacy, will be deprecated)
+from controllers.ai_controller import router as ai_router  # New AI Controller
 
 # Create tables if they don't exist
 try:
@@ -31,6 +36,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Register AI Controller Routes
+app.include_router(ai_router)
 
 # --- Middleware for Logging ---
 @app.middleware("http")

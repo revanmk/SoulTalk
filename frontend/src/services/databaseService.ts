@@ -6,16 +6,6 @@ import type { User, Message, JournalEntry, Exercise, Soundscape } from '../../..
  * Uses backend API for persistence.
  */
 
-// #region agent log
-const __dbg = (hypothesisId: string, location: string, message: string, data: Record<string, any> = {}) => {
-  fetch('http://127.0.0.1:7242/ingest/b1a760f8-324e-4fe9-afbb-7303f8572f5e', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sessionId: 'debug-session', runId: 'pre-fix', hypothesisId, location, message, data, timestamp: Date.now() })
-  }).catch(() => {});
-};
-// #endregion agent log
-
 // Use environment variable for API base URL, fallback to localhost
 const API_BASE = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000';
 
@@ -120,59 +110,43 @@ export const dbService = {
     return null;
   },
 
-  loginUser: async ({email, password}: {email: string, password: string}): Promise<User> => {
+  loginUser: async ({ email, password }: { email: string, password: string }): Promise<User> => {
     // --- DEFAULT ADMIN FOR TESTING ---
     if (email === 'admin@soultalk.ai' && password === 'admin123') {
-        const adminUser: User = {
-            id: 'admin-001',
-            name: 'System Admin',
-            email: 'admin@soultalk.ai',
-            isAdmin: true,
-            isVerified: true,
-            country: 'United States',
-            profilePic: undefined
-        };
-        return adminUser;
+      const adminUser: User = {
+        id: 'admin-001',
+        name: 'System Admin',
+        email: 'admin@soultalk.ai',
+        isAdmin: true,
+        isVerified: true,
+        country: 'United States',
+        profilePic: undefined
+      };
+      return adminUser;
     }
     // --------------------------------
-
-    // #region agent log
-    __dbg('H2', 'databaseService.ts:loginUser', 'fetch start', { url: `${API_BASE}/api/login` });
-    // #endregion agent log
 
     try {
       // Add timeout to prevent hanging
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-      
+
       const res = await fetch(`${API_BASE}/api/login`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({email, password}),
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
         signal: controller.signal
       });
-      
-      clearTimeout(timeoutId);
 
-      // #region agent log
-      __dbg('H2', 'databaseService.ts:loginUser', 'fetch done', { ok: res.ok, status: res.status });
-      // #endregion agent log
+      clearTimeout(timeoutId);
 
       if (res.ok) {
         const data = await res.json();
-        // #region agent log
-        __dbg('H2', 'databaseService.ts:loginUser', 'parsed json', { hasId: !!data?.id, hasEmail: !!data?.email, isAdmin: !!data?.is_admin });
-        // #endregion agent log
         return convertUserFromBackend(data);
       }
-      // #region agent log
-      __dbg('H2', 'databaseService.ts:loginUser', 'fetch not ok', { status: res.status, statusText: res.statusText });
-      // #endregion agent log
+
       throw new Error('Login failed');
     } catch (e: any) {
-      // #region agent log
-      __dbg('H2', 'databaseService.ts:loginUser', 'fetch error', { errorName: e?.name, errorMessage: e?.message, errorStack: e?.stack?.substring(0, 200) });
-      // #endregion agent log
       // Convert timeout/network errors to user-friendly messages
       if (e?.name === 'AbortError' || e?.message?.includes('aborted')) {
         throw new Error('Connection timeout. Please ensure the backend server is running on http://localhost:8000');
@@ -187,43 +161,27 @@ export const dbService = {
   createUser: async (userData: Partial<User> & { password?: string }): Promise<User> => {
     const backendData = convertUserToBackend(userData);
 
-    // #region agent log
-    __dbg('H3', 'databaseService.ts:createUser', 'fetch start', { url: `${API_BASE}/api/signup` });
-    // #endregion agent log
-
     try {
       // Add timeout to prevent hanging
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
-      
+
       const res = await fetch(`${API_BASE}/api/signup`, {
         method: 'POST',
-        headers: {'Content-Type': 'application/json'},
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(backendData),
         signal: controller.signal
       });
-      
-      clearTimeout(timeoutId);
 
-      // #region agent log
-      __dbg('H3', 'databaseService.ts:createUser', 'fetch done', { ok: res.ok, status: res.status });
-      // #endregion agent log
+      clearTimeout(timeoutId);
 
       if (res.ok) {
         const data = await res.json();
-        // #region agent log
-        __dbg('H3', 'databaseService.ts:createUser', 'parsed json', { hasId: !!data?.id, hasEmail: !!data?.email });
-        // #endregion agent log
         return convertUserFromBackend(data);
       }
-      // #region agent log
-      __dbg('H3', 'databaseService.ts:createUser', 'fetch not ok', { status: res.status, statusText: res.statusText });
-      // #endregion agent log
+
       throw new Error('Signup failed');
     } catch (e: any) {
-      // #region agent log
-      __dbg('H3', 'databaseService.ts:createUser', 'fetch error', { errorName: e?.name, errorMessage: e?.message, errorStack: e?.stack?.substring(0, 200) });
-      // #endregion agent log
       // Convert timeout/network errors to user-friendly messages
       if (e?.name === 'AbortError' || e?.message?.includes('aborted')) {
         throw new Error('Connection timeout. Please ensure the backend server is running on http://localhost:8000');
@@ -244,7 +202,7 @@ export const dbService = {
     const backendData = convertUserToBackend(userData);
     const res = await fetch(`${API_BASE}/api/users/${id}`, {
       method: 'PUT',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(backendData)
     });
     if (!res.ok) {
@@ -275,7 +233,7 @@ export const dbService = {
     const backendData = convertMessageToBackend(message);
     const res = await fetch(`${API_BASE}/api/chat/${userId}`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(backendData)
     });
     if (res.ok) {
@@ -299,7 +257,7 @@ export const dbService = {
     const backendData = convertJournalEntryToBackend(entry);
     const res = await fetch(`${API_BASE}/api/journal/${userId}`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(backendData)
     });
     if (res.ok) {
@@ -323,7 +281,7 @@ export const dbService = {
     const backendData = convertExerciseToBackend(exercise);
     const res = await fetch(`${API_BASE}/api/exercises`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(backendData)
     });
     if (res.ok) {
@@ -355,7 +313,7 @@ export const dbService = {
     const backendData = convertSoundscapeToBackend(sound);
     const res = await fetch(`${API_BASE}/api/soundscapes`, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(backendData)
     });
     if (res.ok) {

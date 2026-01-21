@@ -3,39 +3,21 @@ import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { COUNTRIES } from '../../constants';
 
-// #region agent log
-const __dbg = (hypothesisId: string, location: string, message: string, data: Record<string, any> = {}) => {
-  fetch('http://127.0.0.1:7242/ingest/b1a760f8-324e-4fe9-afbb-7303f8572f5e', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      sessionId: 'debug-session',
-      runId: 'pre-fix',
-      hypothesisId,
-      location,
-      message,
-      data,
-      timestamp: Date.now(),
-    }),
-  }).catch(() => {});
-};
-// #endregion agent log
-
 const Login: React.FC = () => {
   const { login, signup, verifyEmail, isLoading } = useAuth();
   const [isLoginView, setIsLoginView] = useState(true);
-  
+
   // Login Fields
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  
+
   // Signup Additional Fields
   const [name, setName] = useState('');
   const [country, setCountry] = useState(COUNTRIES[0].name);
   const [emergencyName, setEmergencyName] = useState('');
   const [emergencyNumber, setEmergencyNumber] = useState('');
   const [profilePic, setProfilePic] = useState<string | undefined>(undefined);
-  
+
   // State for UI feedback
   const [error, setError] = useState('');
   // Verification states removed as we now auto-verify for smooth onboarding
@@ -46,17 +28,17 @@ const Login: React.FC = () => {
     const params = new URLSearchParams(window.location.search);
     const token = params.get('verify');
     if (token) {
-        // Clear params to look clean
-        window.history.replaceState({}, document.title, window.location.pathname);
-        
-        setVerificationStatus('pending');
-        verifyEmail(token).then(success => {
-            if (success) {
-                setVerificationStatus('success');
-            } else {
-                setVerificationStatus('failed');
-            }
-        });
+      // Clear params to look clean
+      window.history.replaceState({}, document.title, window.location.pathname);
+
+      setVerificationStatus('pending');
+      verifyEmail(token).then(success => {
+        if (success) {
+          setVerificationStatus('success');
+        } else {
+          setVerificationStatus('failed');
+        }
+      });
     }
   }, []);
 
@@ -79,20 +61,6 @@ const Login: React.FC = () => {
     e.preventDefault();
     setError('');
 
-    // #region agent log
-    __dbg('H1', 'Login.tsx:handleSubmit', 'submit', {
-      isLoginView,
-      emailLen: (email || '').length,
-      passwordLen: (password || '').length,
-      hasName: !!name,
-      hasCountry: !!country,
-      hasEmergencyName: !!emergencyName,
-      hasEmergencyNumber: !!emergencyNumber,
-      hasProfilePic: !!profilePic,
-      isLoadingFromContext: isLoading,
-    });
-    // #endregion agent log
-
     if (!email || !password) {
       setError('Please enter email and password');
       return;
@@ -107,27 +75,17 @@ const Login: React.FC = () => {
 
     try {
       if (isLoginView) {
-        // #region agent log
-        __dbg('H2', 'Login.tsx:handleSubmit', 'calling login()', { emailLen: (email || '').length });
-        // #endregion agent log
+
         const ok = await login(email, password);
-        // #region agent log
-        __dbg('H2', 'Login.tsx:handleSubmit', 'login() returned', { ok });
-        // #endregion agent log
+
       } else {
-        // #region agent log
-        __dbg('H3', 'Login.tsx:handleSubmit', 'calling signup()', { emailLen: (email || '').length });
-        // #endregion agent log
+
         const res = await signup(email, password, name, country, emergencyName, emergencyNumber, profilePic);
-        // #region agent log
-        __dbg('H3', 'Login.tsx:handleSubmit', 'signup() returned', { success: !!res?.success, hasToken: !!res?.token });
-        // #endregion agent log
+
         // Successful signup will auto-login via AuthContext, triggering a redirect to ChatInterface
       }
     } catch (err: any) {
-      // #region agent log
-      __dbg('H4', 'Login.tsx:handleSubmit', 'submit error', { errMsg: String(err?.message || err) });
-      // #endregion agent log
+
       // Display the actual error message (e.g., "Cannot connect to server")
       setError(err.message || 'Authentication failed');
     }
@@ -135,36 +93,36 @@ const Login: React.FC = () => {
 
   // Verification Processing View (Keep for legacy links)
   if (verificationStatus === 'pending') {
-      return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-            <div className="w-12 h-12 bg-indigo-600 rounded-full animate-bounce mb-4"></div>
-            <h2 className="text-xl font-bold text-slate-700">Verifying your account...</h2>
-        </div>
-      );
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
+        <div className="w-12 h-12 bg-indigo-600 rounded-full animate-bounce mb-4"></div>
+        <h2 className="text-xl font-bold text-slate-700">Verifying your account...</h2>
+      </div>
+    );
   }
 
   if (verificationStatus === 'success' || verificationStatus === 'failed') {
-      return (
-        <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
-           <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-slate-100">
-                <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl ${verificationStatus === 'success' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
-                    {verificationStatus === 'success' ? '✓' : '✕'}
-                </div>
-                <h2 className="text-2xl font-bold text-slate-800 mb-2">
-                    {verificationStatus === 'success' ? 'Email Verified!' : 'Verification Failed'}
-                </h2>
-                <button 
-                  onClick={() => {
-                      setVerificationStatus(null);
-                      setIsLoginView(true);
-                  }}
-                  className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors"
-                >
-                    Continue to Login
-                </button>
-           </div>
+    return (
+      <div className="min-h-screen bg-slate-50 flex flex-col items-center justify-center p-6">
+        <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 text-center border border-slate-100">
+          <div className={`w-16 h-16 rounded-full flex items-center justify-center mx-auto mb-4 text-3xl ${verificationStatus === 'success' ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
+            {verificationStatus === 'success' ? '✓' : '✕'}
+          </div>
+          <h2 className="text-2xl font-bold text-slate-800 mb-2">
+            {verificationStatus === 'success' ? 'Email Verified!' : 'Verification Failed'}
+          </h2>
+          <button
+            onClick={() => {
+              setVerificationStatus(null);
+              setIsLoginView(true);
+            }}
+            className="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl transition-colors"
+          >
+            Continue to Login
+          </button>
         </div>
-      );
+      </div>
+    );
   }
 
   return (
@@ -172,7 +130,7 @@ const Login: React.FC = () => {
       <div className="max-w-md w-full bg-white rounded-2xl shadow-xl p-8 md:p-10 border border-slate-100 my-10">
         <div className="text-center mb-8">
           <div className="w-16 h-16 bg-gradient-to-tr from-indigo-500 to-purple-500 rounded-full flex items-center justify-center text-white text-2xl font-bold mx-auto mb-4 shadow-lg shadow-indigo-200 overflow-hidden">
-             {profilePic ? <img src={profilePic} alt="Profile" className="w-full h-full object-cover" /> : 'ST'}
+            {profilePic ? <img src={profilePic} alt="Profile" className="w-full h-full object-cover" /> : 'ST'}
           </div>
           <h1 className="text-3xl font-bold text-slate-800 mb-2">
             {isLoginView ? 'Welcome Back' : 'Join SoulTalk'}
@@ -181,7 +139,7 @@ const Login: React.FC = () => {
         </div>
 
         <form onSubmit={handleSubmit} className="space-y-4">
-          
+
           {/* Extended Fields for Signup */}
           {!isLoginView && (
             <div className="space-y-4 animate-pop-in">
@@ -223,7 +181,7 @@ const Login: React.FC = () => {
               <div className="bg-rose-50 p-3 rounded-xl border border-rose-100">
                 <p className="text-xs font-semibold text-rose-700 mb-2">Emergency Contact</p>
                 <div className="space-y-3">
-                   <input
+                  <input
                     type="text"
                     value={emergencyName}
                     onChange={(e) => setEmergencyName(e.target.value)}
@@ -242,11 +200,11 @@ const Login: React.FC = () => {
               </div>
             </div>
           )}
-          
+
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-1">Email / Username</label>
             <input
-              type="text" 
+              type="text"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="Enter email or username"
@@ -273,7 +231,7 @@ const Login: React.FC = () => {
 
           <div className="bg-amber-50 border border-amber-100 rounded-lg p-4 text-xs text-amber-800 leading-relaxed">
             <span className="font-bold block mb-1">Safety Notice:</span>
-            I am an AI assistant. I cannot provide medical advice. 
+            I am an AI assistant. I cannot provide medical advice.
             Conversations may be monitored for safety purposes.
           </div>
 
@@ -283,9 +241,9 @@ const Login: React.FC = () => {
             className="w-full bg-indigo-600 hover:bg-indigo-700 disabled:opacity-70 text-white font-semibold py-3 px-6 rounded-xl transition-all shadow-md hover:shadow-xl transform hover:-translate-y-0.5 flex justify-center items-center"
           >
             {isLoading ? (
-               <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
+              <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin" />
             ) : (
-               isLoginView ? 'Log In' : 'Join Now'
+              isLoginView ? 'Log In' : 'Join Now'
             )}
           </button>
         </form>
